@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include <threads/synch.h>
+#include "vm/page.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -100,32 +101,36 @@ struct open_file
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+   tid_t tid;                          /* Thread identifier. */
+   enum thread_status status;          /* Thread state. */
+   char name[16];                      /* Name (for debugging purposes). */
+   uint8_t *stack;                     /* Saved stack pointer. */
+   int priority;                       /* Priority. */
+   struct list_elem allelem;           /* List element for all threads list. */
 
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+   /* Shared between thread.c and synch.c. */
+   struct list_elem elem;              /* List element. */
+
+# ifdef VM
+   struct list supp_page_table;      /* List of supplementary page table. */
+   // struct lock supp_page_lock;       /* Lock for the supplementary page table. */
+#endif
 
 #ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+   /* Owned by userprog/process.c. */
+   uint32_t *pagedir;                  /* Page directory. */
    // Teresa
-    struct thread *parent;
-    struct list children;               /* List of child processes created by this thread. */
-    struct child *child_info;           /* Point to the structure of this thread in parent's child list.*/
+   struct thread *parent;
+   struct list children;               /* List of child processes created by this thread. */
+   struct child *child_info;           /* Point to the structure of this thread in parent's child list.*/
 
-    int st_exit;
-    bool child_loaded;
-    struct semaphore sema_wait;
+   int st_exit;
+   bool child_loaded;
+   struct semaphore sema_wait;
 
-    struct list files;
-    struct file *exec_file;              /* The executable file this thread is running. */
-    int file_fd;
-
+   struct list files;
+   struct file *exec_file;              /* The executable file this thread is running. */
+   int file_fd;
 #endif
 
     /* Owned by thread.c. */

@@ -38,6 +38,10 @@
 #include "filesys/fsutil.h"
 #endif
 
+#ifdef VM
+#include "vm/frame.h"
+#endif
+
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
 
@@ -103,6 +107,10 @@ main (void)
 #ifdef USERPROG
   tss_init ();
   gdt_init ();
+#endif
+#ifdef VM
+  /* Initialize frame table. */
+  frame_table_init ();
 #endif
 
   /* Initialize interrupt handlers. */

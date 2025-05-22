@@ -511,7 +511,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
-  #ifdef USERPROG
+#ifdef USERPROG
   /* Thread initialization */
   if(t == initial_thread) t->parent = NULL;
   else t->parent = thread_current();
@@ -524,6 +524,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->file_fd = 2; // fd 0 (STDIN_FILENO) is standard input, fd 1 (STDOUT_FILENO) is standard output. 
   list_init(&t->files);
 #endif 
+#ifdef VM
+  list_init(&t->supp_page_table);
+  // lock_init(&t->supp_page_lock);
+#endif
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
