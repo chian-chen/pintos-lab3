@@ -33,6 +33,9 @@ void suppPage_cleanup_all(struct thread* t) {
         if (sp->type == PAGE_FILE) {
             file_close(sp->file);
         }
+        lock_acquire(&t->supp_page_lock);
+        list_remove(&sp->elem);
+        lock_release(&t->supp_page_lock);
         free(sp);
     }
 }
@@ -40,11 +43,15 @@ void suppPage_cleanup_all(struct thread* t) {
 void suppPage_cleanup_file(struct file* file) {
     struct list_elem *e;
     struct suppPage *sp;
-    for (e = list_begin(&thread_current()->supp_page_table); e != list_end(&thread_current()->supp_page_table); e = list_next(e)) {
+    struct thread* t = thread_current();
+
+    for (e = list_begin(&t->supp_page_table); e != list_end(&t->supp_page_table); e = list_next(e)) {
         sp = list_entry(e, struct suppPage, elem);
         if (sp->file == file) {
+            lock_acquire(&t->supp_page_lock);
+            list_remove(&sp->elem);
+            lock_release(&t->supp_page_lock);
             free(sp);
-            break;
         }
     }
 }
@@ -52,19 +59,21 @@ void suppPage_cleanup_file(struct file* file) {
 struct suppPage* get_suppPage_by_addr(uint8_t *upage) {
     struct list_elem *e;
     struct suppPage *sp;
+    // printf("try get_suppPage_by_addr: %p\n", upage);
     upage = pg_round_down(upage);
     for (e = list_begin(&thread_current()->supp_page_table); e != list_end(&thread_current()->supp_page_table); e = list_next(e)) {
         sp = list_entry(e, struct suppPage, elem);
         if (sp->upage == upage) {
+            // printf("found: %p\n", sp->upage);
             return sp;
         }
     }
+    // printf("not found: %p\n", upage);
     return NULL;
 }
 
 bool load_in_memory(struct suppPage* sp) {
-    bool loading_success = false;
-    sp->safe = false;
+    sp->pinning = true;
 
     enum palloc_flags flags = PAL_USER | PAL_ZERO;
     uint8_t * kpage = frame_get_page(flags);
@@ -89,8 +98,8 @@ bool load_in_memory(struct suppPage* sp) {
 	    return false; 
 	}
 
-    sp->is_loaded = loading_success;
-    sp->safe = true;
+    sp->is_loaded = true;
+    sp->pinning = false;
     return true;
 }
 
@@ -124,7 +133,7 @@ bool stack_grow(void *addr){
     sp->writable = true;
     sp->owner_t = thread_current();
     sp->type = PAGE_STACK;
-    sp->safe = false;
+    sp->pinning = false;
     sp->file = NULL;
     
     uint8_t * kpage = frame_get_page(PAL_USER);
@@ -140,7 +149,8 @@ bool stack_grow(void *addr){
         frame_free_page(kpage);
         return false;
     }
-
+    lock_acquire(&thread_current()->supp_page_lock);
     list_push_back(&thread_current()->supp_page_table, &sp->elem);
-    return true;
+    lock_release(&thread_current()->supp_page_lock);
+    return install_success;
 }

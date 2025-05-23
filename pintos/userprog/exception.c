@@ -4,6 +4,10 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+
+#include "vm/page.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -147,6 +151,33 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+
+//   printf("Page fault Info: not_present: %d, write: %d, user: %d\n", not_present, write, user);
+//   printf("Fault address: %p\n", fault_addr);
+
+  bool can_load = false;
+
+  if(not_present && is_user_vaddr(fault_addr))
+  {
+      // printf("Flag: here we try some page fault handling\n");
+      struct suppPage* sp = get_suppPage_by_addr(fault_addr);
+
+      if(sp != NULL)
+      {
+         // printf("Flag: here we try sp\n");
+         can_load = load_in_memory(sp);
+      }
+      else
+      {
+         // printf("Flag: here we try stack\n");
+         if((uint32_t*) fault_addr >= (f->esp - 32))
+            can_load = stack_grow(fault_addr);
+      }
+  }
+//   printf("For address %p, can_load: %d\n", fault_addr, can_load);
+
+  if(can_load)
+      return;
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

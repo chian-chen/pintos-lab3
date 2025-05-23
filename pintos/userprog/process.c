@@ -16,8 +16,8 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
 
 #include "vm/frame.h"
 #include "vm/page.h"
@@ -121,9 +121,7 @@ static void start_process (void *file_name_)
   success = load (file_name, &if_.eip, &if_.esp);
   if(success)
   {
-    
     push_argument (&if_.esp, fn_copy);
-
     thread_current()->parent->child_loaded = true;
     sema_up(&thread_current()->parent->sema_wait);
     
@@ -136,6 +134,7 @@ static void start_process (void *file_name_)
   }
 
   free(fn_copy);
+  free(file_name_);
   
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -483,50 +482,44 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
-static bool
-load_segment (struct file *file, off_t ofs, uint8_t *upage,
-              uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+
+static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
+                          uint32_t read_bytes, uint32_t zero_bytes,
+                          bool writable) 
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
   file_seek (file, ofs);
-  while (read_bytes > 0 || zero_bytes > 0) 
+
+  while(read_bytes > 0 || zero_bytes > 0) 
     {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      // uint8_t *kpage = palloc_get_page (PAL_USER);
-      uint8_t *kpage = frame_get_page(PAL_USER);
-      if (kpage == NULL)
+      struct suppPage *sp = malloc(sizeof(struct suppPage));
+      if (sp == NULL)
         return false;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          // palloc_free_page (kpage);
-          frame_free_page(kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      sp->owner_t = thread_current();
+      sp->type = PAGE_FILE;
+      sp->file = file;
+      sp->offset = ofs;
+      sp->upage = upage;
+      sp->read_bytes = page_read_bytes;
+      sp->zero_bytes = page_zero_bytes;
+      sp->writable = writable;
+      sp->is_loaded = false;
+      sp->pinning = false;
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          frame_free_page(kpage);
-          return false; 
-        }
+      lock_acquire(&thread_current()->supp_page_lock);
+      list_push_back(&thread_current()->supp_page_table, &sp->elem);
+      lock_release(&thread_current()->supp_page_lock);
 
-      /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs += PGSIZE;
     }
   return true;
 }
@@ -536,20 +529,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
-  bool success = false;
-
-  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  kpage = frame_get_page(PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        frame_free_page(kpage);
-        // palloc_free_page (kpage);
-    }
+  bool success = stack_grow((void *) PHYS_BASE - PGSIZE);
+  if (!success)
+    return false;
+  *esp = PHYS_BASE;
   return success;
 }
 

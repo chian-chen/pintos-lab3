@@ -56,7 +56,7 @@ static void (*syscalls[MAX_SYSCALL])(struct intr_frame *) = {
 };
 
 static void syscall_handler (struct intr_frame *);
-static void *check_ptr(const void *vaddr);
+static void check_ptr(const void *vaddr);
 static int get_user(const uint8_t *uaddr);
 static struct open_file *find_file(int fd);
 void invalid_access (void);
@@ -74,7 +74,7 @@ static int get_user (const uint8_t *uaddr)
   return result;
 }
 
-static void *check_ptr(const void *vaddr)
+static void check_ptr(const void *vaddr)
 {
   if (vaddr == NULL || !is_user_vaddr(vaddr))
   invalid_access();
@@ -288,9 +288,6 @@ void sys_close (struct intr_frame* f)
   }
 }
 
-
-
-
 /* System Call: void halt (void)
     Terminates Pintos by calling shutdown_power_off() (declared in devices/shutdown.h). 
 */
@@ -298,8 +295,6 @@ void sys_halt(void)
 {
   shutdown_power_off();
 }
-
-
 
 void invalid_access (void)
 {
@@ -309,6 +304,7 @@ void invalid_access (void)
 
 static void syscall_handler (struct intr_frame *f UNUSED) 
 {
+  // printf("[Syscall] Hello: %d\n", *(int *)f->esp);
   check_ptr((int *)f->esp + 1);
 
   int sys_code = *(int *)f->esp;

@@ -113,7 +113,7 @@ struct thread
 
 # ifdef VM
    struct list supp_page_table;      /* List of supplementary page table. */
-   // struct lock supp_page_lock;       /* Lock for the supplementary page table. */
+   struct lock supp_page_lock;       /* Lock for the supplementary page table. */
 #endif
 
 #ifdef USERPROG

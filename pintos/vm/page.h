@@ -10,7 +10,7 @@
 #include "vm/frame.h"
 
 
-#define MAX_STACK_SIZE (1 << 20) // 1MB
+#define MAX_STACK_SIZE (1 << 23) // 1MB
 enum page_type {
     PAGE_STACK,
     PAGE_FILE,
@@ -34,7 +34,7 @@ struct suppPage {
 	bool writable;
     
     bool is_loaded; // true if the page is loaded in memory
-    bool safe;      // the page can be evicted or not
+    bool pinning;      // the page can be evicted or not
 };
 
 void suppPage_cleanup_all(struct thread* t);
@@ -44,9 +44,6 @@ struct suppPage* get_suppPage_by_addr(uint8_t *upage);
 bool load_in_memory(struct suppPage* sp);
 struct suppPage* get_suppPage_by_frame(struct frame* f);
 bool stack_grow(void *addr);
-
-
-
 
 
 

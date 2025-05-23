@@ -526,7 +526,7 @@ init_thread (struct thread *t, const char *name, int priority)
 #endif 
 #ifdef VM
   list_init(&t->supp_page_table);
-  // lock_init(&t->supp_page_lock);
+  lock_init(&t->supp_page_lock);
 #endif
 
   old_level = intr_disable ();
