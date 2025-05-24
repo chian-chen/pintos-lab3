@@ -198,6 +198,7 @@ process_exit (void)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  suppPage_cleanup_all(cur);
   pd = cur->pagedir;
   if (pd != NULL) 
     {
@@ -502,15 +503,16 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
         return false;
 
       sp->owner_t = thread_current();
-      sp->type = PAGE_FILE;
+      sp->type = PAGE_CODE;
       sp->file = file;
       sp->offset = ofs;
       sp->upage = upage;
       sp->read_bytes = page_read_bytes;
       sp->zero_bytes = page_zero_bytes;
       sp->writable = writable;
-      sp->is_loaded = false;
+      sp->loc = PAGE_NOT_LOAD; // Initially not loaded
       sp->pinning = false;
+      sp->swap_index = -1;
 
       lock_acquire(&thread_current()->supp_page_lock);
       list_push_back(&thread_current()->supp_page_table, &sp->elem);

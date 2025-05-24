@@ -5,6 +5,8 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/palloc.h"
+#include "vm/page.h"
+#include "vm/swap.h"
 
 
 extern struct list frame_table; // frame table list, a globla variable
@@ -21,6 +23,7 @@ struct frame {
 void frame_table_init(void);
 uint8_t *frame_get_page(enum palloc_flags flags);
 void frame_free_page(uint8_t *kpage);
+bool try_evict_frame(void);
 
 
 #endif /* vm/frame.h */

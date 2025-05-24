@@ -8,6 +8,7 @@
 #include "filesys/filesys.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "vm/swap.h"
 #include "userprog/pagedir.h"
 #include <stdlib.h>
 #include "userprog/syscall.h"
@@ -25,19 +26,20 @@ struct suppPage* get_suppPage_by_frame(struct frame* f);
 bool stack_grow(void *addr);
 
 
+
 void suppPage_cleanup_all(struct thread* t) {
-    struct list_elem *e;
+    struct list_elem *e, *next;
     struct suppPage *sp;
-    for (e = list_begin(&t->supp_page_table); e != list_end(&t->supp_page_table); e = list_next(e)) {
+    lock_acquire(&t->supp_page_lock);
+    for (e = list_begin(&t->supp_page_table); e != list_end(&t->supp_page_table);) {
         sp = list_entry(e, struct suppPage, elem);
-        if (sp->type == PAGE_FILE) {
-            file_close(sp->file);
-        }
-        lock_acquire(&t->supp_page_lock);
+        next = list_next (e);
         list_remove(&sp->elem);
-        lock_release(&t->supp_page_lock);
         free(sp);
+        e = next;
     }
+    lock_release(&t->supp_page_lock);
+    return;
 }
 
 void suppPage_cleanup_file(struct file* file) {
@@ -82,14 +84,21 @@ bool load_in_memory(struct suppPage* sp) {
 		return false;
 	}
 
-    if(sp->type == PAGE_FILE){
-        file_seek(sp->file, sp->offset);
-		if (file_read (sp->file, kpage, sp->read_bytes) != (int) sp->read_bytes)
-		{
-		  	frame_free_page (kpage);
-		  	return false; 
-		}
-		memset (kpage + sp->read_bytes, 0, sp->zero_bytes);
+    if(sp->loc == PAGE_IN_SWAP) 
+    {
+        swap_to_memory(sp, kpage);
+    }
+    else
+    {
+        if(sp->file != NULL) {
+            file_seek(sp->file, sp->offset);
+            if (file_read (sp->file, kpage, sp->read_bytes) != (int) sp->read_bytes)
+            {
+                frame_free_page (kpage);
+                return false; 
+            }
+            memset (kpage + sp->read_bytes, 0, sp->zero_bytes);
+        }
     }
 
     if (!install_page (sp->upage, kpage, sp->writable)) 
@@ -98,7 +107,7 @@ bool load_in_memory(struct suppPage* sp) {
 	    return false; 
 	}
 
-    sp->is_loaded = true;
+    sp->loc = PAGE_IN_MEMORY;
     sp->pinning = false;
     return true;
 }
@@ -127,20 +136,21 @@ bool stack_grow(void *addr){
     if(sp == NULL) {
         return false;
     }
-
-    sp->upage = pg_round_down(addr);
-    sp->is_loaded = true;
-    sp->writable = true;
-    sp->owner_t = thread_current();
-    sp->type = PAGE_STACK;
-    sp->pinning = false;
-    sp->file = NULL;
     
     uint8_t * kpage = frame_get_page(PAL_USER);
     if (kpage == NULL) {
         free(sp);
         return false;
     }
+
+    sp->upage = pg_round_down(addr);
+    sp->loc = PAGE_IN_MEMORY;
+    sp->writable = true;
+    sp->owner_t = thread_current();
+    sp->type = PAGE_STACK;
+    sp->pinning = false;
+    sp->file = NULL;
+    sp->swap_index = -1;
 
     bool install_success = install_page(sp->upage, kpage, sp->writable);
     if (install_success == false) 
@@ -149,8 +159,10 @@ bool stack_grow(void *addr){
         frame_free_page(kpage);
         return false;
     }
+
     lock_acquire(&thread_current()->supp_page_lock);
     list_push_back(&thread_current()->supp_page_table, &sp->elem);
     lock_release(&thread_current()->supp_page_lock);
+
     return install_success;
 }

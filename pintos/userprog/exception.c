@@ -178,7 +178,11 @@ page_fault (struct intr_frame *f)
 
   if(can_load)
       return;
-
+  else
+  {
+      thread_exit ();
+      return;
+  }
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

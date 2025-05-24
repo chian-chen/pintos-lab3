@@ -15,6 +15,9 @@
 #include "pagedir.h"
 #include <threads/vaddr.h>
 #include <filesys/filesys.h>
+#include "vm/frame.h"
+#include "vm/page.h"
+#include "vm/swap.h"
 
 #define MAX_SYSCALL 20
 
@@ -82,6 +85,16 @@ static void check_ptr(const void *vaddr)
   for (size_t i = 0; i < sizeof(int); i++) {
     const void *addr = (uint8_t *)vaddr + i;
     if (!is_user_vaddr(addr) || !pagedir_get_page(thread_current()->pagedir, addr) || get_user(addr) == -1)
+        invalid_access();
+  }
+}
+
+static void check_user_addr(const void *vaddr) {
+  if (vaddr == NULL || !is_user_vaddr(vaddr))
+    invalid_access();
+  for (size_t i = 0; i < sizeof(int); i++) {
+    const void *addr = (uint8_t *)vaddr + i;
+    if (!is_user_vaddr(addr) || get_user(addr) == -1)
         invalid_access();
   }
 }
@@ -209,16 +222,39 @@ void sys_filesize (struct intr_frame* f){
   }
 }
 
+
+static void
+prefetch_user_pages (uint8_t *buffer, size_t size) {
+  if (!buffer || !is_user_vaddr(buffer)) 
+    invalid_access();
+  for (size_t off = 0; off < size; off += PGSIZE) {
+    if (get_user(buffer + off) < 0)
+      invalid_access();
+  }
+  if (size > 0 && get_user(buffer + size - 1) < 0)
+    invalid_access();
+}
+
+
 void sys_read (struct intr_frame* f)
 {
   uint32_t *args = (uint32_t)f->esp;
-
   int fd = args[1];
   uint8_t  *buffer = (uint8_t *)args[2];
   off_t size = (off_t)args[3];
-
+  
+  prefetch_user_pages(buffer, size);
   check_ptr(buffer);
-  check_ptr(buffer + size);
+  check_ptr(buffer + size - 1);
+
+  for (uintptr_t addr = pg_round_down (buffer);
+       addr < buffer + size;
+       addr += PGSIZE)
+    {
+      struct suppPage *sp = get_suppPage_by_addr ((void *) addr);
+      if (sp == NULL || !sp->writable)
+        invalid_access ();
+    }
 
   if(fd == 0)
   {
