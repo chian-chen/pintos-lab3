@@ -45,13 +45,13 @@ struct suppPage {
     bool pinning;      // the page can be evicted or not
 
     // swap setting
-    swap_index_t swap_index; // index of the swap page, if the page_type is PAGE_IN_SWAP, we can use it to recover the page
+    swap_index_t swap_index; // index of the swap page, we can use it to recover the page
 };
+
+
 struct frame;
 
 void suppPage_cleanup_all(struct thread* t);
-void suppPage_cleanup_file(struct file* file);
-
 struct suppPage* get_suppPage_by_addr(uint8_t *upage);
 bool load_in_memory(struct suppPage* sp);
 struct suppPage* get_suppPage_by_frame(struct frame* f);

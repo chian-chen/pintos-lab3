@@ -41,6 +41,51 @@ void sys_seek(struct intr_frame* f);
 void sys_tell(struct intr_frame* f);
 void sys_close(struct intr_frame* f);
 
+static void
+pin_and_fault_in_user_pages (void *buffer, size_t size, bool writable, void* user_esp)
+{
+    if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
+        invalid_access ();
+
+    uint8_t *pg;
+    for (pg = pg_round_down (buffer);
+         pg < (uint8_t *)buffer + size;
+         pg += PGSIZE)
+    {
+        struct suppPage *sp = get_suppPage_by_addr (pg);
+
+        if (sp == NULL) {
+           if (buffer >= (uint8_t *)user_esp - 32) {
+                if (!stack_grow (pg))
+                    invalid_access ();
+                sp = get_suppPage_by_addr (pg);
+            } else {
+                invalid_access ();
+            }
+        }
+
+        if (writable && !sp->writable)
+            invalid_access ();
+
+        if (sp->loc != PAGE_IN_MEMORY && !load_in_memory (sp))
+            invalid_access ();
+
+        sp->pinning = true;
+    }
+}
+
+static void
+unpin_user_pages (void *buffer, size_t size)
+{
+    uint8_t *pg;
+    for (pg = pg_round_down (buffer);
+         pg < (uint8_t *)buffer + size;
+         pg += PGSIZE)
+    {
+        struct suppPage *sp = get_suppPage_by_addr (pg);
+        if (sp) sp->pinning = false;
+    }
+}
 
 static void (*syscalls[MAX_SYSCALL])(struct intr_frame *) = {
   [SYS_HALT] = sys_halt,
@@ -89,16 +134,6 @@ static void check_ptr(const void *vaddr)
   }
 }
 
-static void check_user_addr(const void *vaddr) {
-  if (vaddr == NULL || !is_user_vaddr(vaddr))
-    invalid_access();
-  for (size_t i = 0; i < sizeof(int); i++) {
-    const void *addr = (uint8_t *)vaddr + i;
-    if (!is_user_vaddr(addr) || get_user(addr) == -1)
-        invalid_access();
-  }
-}
-
 static struct open_file *find_file(int fd)
 {
   struct list *files = &thread_current()->files;
@@ -143,6 +178,7 @@ void sys_write(struct intr_frame* f)
   const char *buffer = (const char *)args[2];
   off_t size = (off_t)args[3];
 
+  pin_and_fault_in_user_pages(buffer, size, false, f->esp);
   check_ptr(buffer);
   check_ptr(buffer + size - 1);
 
@@ -159,6 +195,7 @@ void sys_write(struct intr_frame* f)
       f->eax = 0;
     }
   }
+  unpin_user_pages(buffer, size);
 }
 
 void sys_create(struct intr_frame* f)
@@ -223,18 +260,6 @@ void sys_filesize (struct intr_frame* f){
 }
 
 
-static void
-prefetch_user_pages (uint8_t *buffer, size_t size) {
-  if (!buffer || !is_user_vaddr(buffer)) 
-    invalid_access();
-  for (size_t off = 0; off < size; off += PGSIZE) {
-    if (get_user(buffer + off) < 0)
-      invalid_access();
-  }
-  if (size > 0 && get_user(buffer + size - 1) < 0)
-    invalid_access();
-}
-
 
 void sys_read (struct intr_frame* f)
 {
@@ -243,7 +268,7 @@ void sys_read (struct intr_frame* f)
   uint8_t  *buffer = (uint8_t *)args[2];
   off_t size = (off_t)args[3];
   
-  prefetch_user_pages(buffer, size);
+  pin_and_fault_in_user_pages(buffer, size, true, f->esp);
   check_ptr(buffer);
   check_ptr(buffer + size - 1);
 
@@ -254,6 +279,7 @@ void sys_read (struct intr_frame* f)
       struct suppPage *sp = get_suppPage_by_addr ((void *) addr);
       if (sp == NULL || !sp->writable)
         invalid_access ();
+      sp->pinning = true; // Pin the page to prevent eviction
     }
 
   if(fd == 0)
@@ -274,6 +300,7 @@ void sys_read (struct intr_frame* f)
       f->eax = -1;
     }
   }
+  unpin_user_pages(buffer, size);
 }
 
 void sys_seek(struct intr_frame* f)

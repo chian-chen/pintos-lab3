@@ -18,8 +18,6 @@
 
 
 void suppPage_cleanup_all(struct thread* t);
-void suppPage_cleanup_file(struct file* file);
-
 struct suppPage* get_suppPage_by_addr(uint8_t *upage);
 bool load_in_memory(struct suppPage* sp);
 struct suppPage* get_suppPage_by_frame(struct frame* f);
@@ -40,22 +38,6 @@ void suppPage_cleanup_all(struct thread* t) {
     }
     lock_release(&t->supp_page_lock);
     return;
-}
-
-void suppPage_cleanup_file(struct file* file) {
-    struct list_elem *e;
-    struct suppPage *sp;
-    struct thread* t = thread_current();
-
-    for (e = list_begin(&t->supp_page_table); e != list_end(&t->supp_page_table); e = list_next(e)) {
-        sp = list_entry(e, struct suppPage, elem);
-        if (sp->file == file) {
-            lock_acquire(&t->supp_page_lock);
-            list_remove(&sp->elem);
-            lock_release(&t->supp_page_lock);
-            free(sp);
-        }
-    }
 }
 
 struct suppPage* get_suppPage_by_addr(uint8_t *upage) {

@@ -26,10 +26,7 @@ void swap_init(void){
     
     /* Initialize swap_list: list of swap_page */
     if(lock_held_by_current_thread(&swap_lock) == false)
-    {
-        lock_acquire(&swap_lock);
-    }
-    // lock_acquire(&swap_lock);
+    lock_acquire(&swap_lock);
     int i = 0, total_size = block_size(swap_block) / SECTORS_PER_PAGE;
     for (i = 0; i < total_size; i++) {
         struct swap_page *sp = malloc(sizeof(struct swap_page));

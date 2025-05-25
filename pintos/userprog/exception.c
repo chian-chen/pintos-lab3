@@ -172,17 +172,16 @@ page_fault (struct intr_frame *f)
          // printf("Flag: here we try stack\n");
          if((uint32_t*) fault_addr >= (f->esp - 32))
             can_load = stack_grow(fault_addr);
+         else{
+            thread_exit();
+            return;
+         }
       }
   }
 //   printf("For address %p, can_load: %d\n", fault_addr, can_load);
 
   if(can_load)
       return;
-  else
-  {
-      thread_exit ();
-      return;
-  }
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
